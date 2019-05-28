@@ -5,6 +5,7 @@ import sys
 import cPickle as pickle
 from memory_profiler import profile
 from orphics import maps, stats
+from pixell import enmap
 
 #from cmblensplus
 import basic
