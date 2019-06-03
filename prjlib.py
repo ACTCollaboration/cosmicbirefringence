@@ -105,37 +105,30 @@ class filename:
     # 
     # - curvedsky/ : outputs in curvedsky 
     #     - cmb/ : CMB map/alm/cl in harmonic space
-    #         - map/
     #         - alm/
     #         - aps/
-    #     - mask/ : mask defined in curvedsky
-    #
-    # - input/ : theory cl
+    #     - mask/  : mask defined in curvedsky
+    #     - input/
+    #         - lensed.dat : input theory cl
+    #         - aalm : alms of input alpha
+    #     - rot/  : results of cosmic birefringence reconstruction
+    #         - alm/   : alm of reconstructed cosmic birefringence
+    #         - aps/   : angular power spectrum of cosmic birefringence 
+    #         - mean/  : mean-field bias
+    #         - rdn0/  : realization-dependent bias
     # 
-    # - actsim/
-    #     - alpha/  : input cosmic birefringence map/alm
-    #     - mask/   : mask defined in flatsky grid
-    #     
-    # - rot/  : results of cosmic birefringence reconstruction
-    #     - alm/   : alm of reconstructed cosmic birefringence
-    #     - aps/   : angular power spectrum of cosmic birefringence 
-    #     - mean/  : mean-field bias
-    #     - rdn0/  : realization-dependent bias
     #
-
     def __init__(self,params):
 
         #//// root directories ////#
-        Dir    = '/global/cscratch1/sd/toshiyan/ACT/'
-        # input cl
+        Dir    = '/project/projectdirs/act/data/curvedsky/'
+        # input
         d_inp  = Dir+'input/'
         # cmb
-        d_act  = Dir+'actsim/'
-        d_map  = Dir+'curvedsky/cmb/map/'
-        d_alm  = Dir+'curvedsky/cmb/alm/'
-        d_aps  = Dir+'curvedsky/cmb/aps/'
-        # params mask
-        d_msk  = Dir+'curvedsky/mask/'
+        d_alm  = Dir+'cmb/alm/'
+        d_aps  = Dir+'cmb/aps/'
+        # mask
+        d_msk  = Dir+'mask/'
 
         #//// basic tags ////#
 
@@ -159,7 +152,7 @@ class filename:
 
         # window function
         # mask in flat sky grid
-        self.fmask = d_act+'/mask/'+params.PSA+'_'+params.stype+'.fits'
+        self.fmask = d_msk+'/mask2d_'+params.PSA+'_'+params.stype+'.fits'
         # mask in curvedsky healpix sphere
         self.rmask = d_msk+'/'+params.psa+'_'+params.stype+'.fits'
         # apodized mask in healpix
@@ -167,8 +160,8 @@ class filename:
 
         #//// CMB, noise, input alpha, ... ////#
         # input alpha map and alm
-        self.amap = [d_act+'/alpha/fullskyalpha_set0_id'+str(xi)+'.fits' for xi in range(501)]
-        self.aalm = [d_act+'/alpha/aalm_'+str(x)+'.fits' for x in ids]
+        #self.amap = [d_act+'/alpha/fullskyalpha_set0_id'+str(xi)+'.fits' for xi in range(501)]
+        self.aalm = [d_inp+'/aalm/aalm_'+str(x)+'.fits' for x in ids]
 
         self.imap = {}
         self.omap = {}
@@ -176,16 +169,16 @@ class filename:
         for mtype in ['T','E','B']:
             # K-space combined cmb/noise maps
             if   params.stype == 'lcmb': 
-                self.imap[mtype] = [d_act+'/K_space_prepared/preparedSimset00_Map'+x+'_'+mtype+'_'+params.PSA+'.fits' for x in ids]
+                self.imap[mtype] = [d_map+'/K_space_prepared/preparedSimset00_Map'+x+'_'+mtype+'_'+params.PSA+'.fits' for x in ids]
             elif params.stype == 'arot':
-                self.imap[mtype] = [d_act+'/alpha/preparedSimset00_Map'+x+'_'+mtype+'_'+params.PSA+'.fits' for x in ids]
+                self.imap[mtype] = [d_map+'/preparedSimset00_Map'+x+'_'+mtype+'_'+params.PSA+'.fits' for x in ids]
             else:
                 print('no valid cmb maps')
             # curvedsky map and alm
             self.omap[mtype] = [d_map+'/'+mtype+'_'+params.stype+'_'+params.psa+'_'+x+'.fits' for x in ids] #map
             self.alm[mtype]  = [d_alm+'/'+mtype+'_'+stag+'_'+x+'.fits' for x in ids] #alm
             # replace sim to real
-            if params.doreal: self.imap[mtype][0] = d_act+'/cmb/preparedMap_'+mtype+'_'+params.PSA+'.fits'
+            if params.doreal: self.imap[mtype][0] = d_map+'/preparedMap_'+mtype+'_'+params.PSA+'.fits'
 
         # cmb aps
         self.scl = d_aps+'aps_sim_1d_'+stag+'.dat'
