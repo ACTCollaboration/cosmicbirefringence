@@ -126,6 +126,7 @@ class filename:
         d_inp  = Dir+'input/'
         # cmb
         d_alm  = Dir+'cmb/alm/'
+        d_map  = Dir+'cmb/map2d/'
         d_aps  = Dir+'cmb/aps/'
         # mask
         d_msk  = Dir+'mask/'
