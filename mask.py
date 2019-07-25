@@ -14,7 +14,7 @@ f = prjlib.filename(p)
 
 # transform to fullsky mask
 if transmask:
-    hpmap = enmap.to_healpix(enmap.read_map(f.fmask))
+    hpmap = enmap.to_healpix(enmap.read_map(f.fmask),nside=p.nside)
     print(np.max(hpmap))
     hpmap = hpmap/np.max(hpmap)
     hpmap[hpmap<0] = 0.

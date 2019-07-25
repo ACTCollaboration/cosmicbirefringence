@@ -11,7 +11,6 @@ import quad_func
 p, f, r = prjlib.init()
 prjlib.make_qrec_filter(p,f,r)
 
-
 #//// Reconstruction ////#
 quad_func.al(p,f,r)
 quad_func.qrec(p,f.alm,f.quad,r)
@@ -71,12 +70,7 @@ for q in p.qlist:
         np.savetxt(f.quad[q].mcbs,np.concatenate((r.bc[None,:],np.mean(cb[1:,:,:],axis=0),np.std(cb[1:,:,:],axis=0))).T)
 
     if p.snmin==0:
-        if p.doreal:
-            print('save real')
-            np.savetxt(f.quad[q].rcls,np.concatenate((r.eL[None,:],cl[0,:,:])).T)
-            np.savetxt(f.quad[q].rcbs,np.concatenate((r.bc[None,:],cb[0,:,:])).T)
-        else:
-            print('save mock obs')
-            np.savetxt(f.quad[q].ocls,np.concatenate((r.eL[None,:],cl[0,:,:])).T)
-            np.savetxt(f.quad[q].ocbs,np.concatenate((r.bc[None,:],cb[0,:,:])).T)
+        print('save real')
+        np.savetxt(f.quad[q].ocls,np.concatenate((r.eL[None,:],cl[0,:,:])).T)
+        np.savetxt(f.quad[q].ocbs,np.concatenate((r.bc[None,:],cb[0,:,:])).T)
 
