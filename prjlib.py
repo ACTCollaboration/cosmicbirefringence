@@ -2,9 +2,8 @@ import numpy as np
 import healpy as hp
 import sys
 import basic
-import curvedsky
 import configparser
-from pixell import enmap
+import quad_class
 
 #* Define parameters
 
@@ -44,6 +43,7 @@ class params:
         self.ascale = conf.getint('ascale',1)
         self.doreal = conf.getboolean('doreal',False)
         self.chreal = conf.get('chreal','')
+        self.lcut   = conf.get('lcut',100)
 
         # reconstruction
         self.qtype  = conf.get('qtype','lens')
@@ -77,42 +77,7 @@ class params:
             self.qlist = ['EB']
 
 
-# * Define quad estimator names
-class quadest:
-
-    def __init__(self,qtype,qest,root,stag,ltag,otag,ids):
-
-        # qtype is the type of mode coupling, such as lens, rot, etc
-        qalm = root + qtype + '/alm/'
-        qrdn = root + qtype + '/rdn0/'
-        qmlm = root + qtype + '/mean/'
-        qaps = root + qtype + '/aps/'
-
-        # normalization and tau transfer function
-        self.al   = qaps+'Al_'+qest+'_'+stag+ltag+'.dat'
-        self.wl   = qaps+'Wl_'+qest+'_'+stag+ltag+'.dat'
-
-        # N0/N1 bias
-        self.n0bl = qaps+'n0_'+qest+'_'+stag+ltag+'.dat'
-        self.n1bs = qaps+'n1_'+qest+'_'+stag+ltag+'.dat'
-
-        # mean field
-        self.ml   = [qmlm+'ml_'+qest+'_'+stag+ltag+'_'+x+'.dat' for x in ids]
-        self.mfb  = [qmlm+'mfb_'+qest+'_'+stag+ltag+'_'+x+'.fits' for x in ids]
-
-        # reconstructed spectra
-        self.mcls = qaps+'cl_'+qest+'_'+stag+ltag+'.dat'
-        self.mcbs = qaps+'cl_'+qest+'_'+stag+ltag+otag+'.dat'
-        self.ocls = qaps+'cl_'+ids[0]+'_'+qest+'_'+stag+ltag+'.dat'
-        self.ocbs = qaps+'cl_'+ids[0]+'_'+qest+'_'+stag+ltag+otag+'.dat'
-
-        # reconstructed alm/map and RDN0
-        self.alm  = [qalm+'alm_'+qest+'_'+stag+ltag+'_'+x+'.fits' for x in ids]
-        self.cl   = [qalm+'cl_'+qest+'_'+stag+ltag+'_'+x+'.dat' for x in ids]
-        self.rdn0 = [qrdn+'rdn0_'+qest+'_'+stag+ltag+'_'+x+'.dat' for x in ids]
-
-
-# * Define class filename
+# Define class filename
 class filename:
 
     # The code assumes the following directory structure:
@@ -132,11 +97,13 @@ class filename:
     def __init__(self,params):
 
         #//// root directories ////#
-        Dir    = '/global/cscratch1/sd/toshiyan/ACT/curvedsky/'
+        Dir    = '/global/homes/t/toshiyan/Work/Ongoing/ACT/data/curvedsky/'
         # input cl
         d_inp  = Dir+'input/'
         # cmb, kappa
-        d_act  = Dir+'../actsim/'
+        d_ACT  = '/project/projectdirs/act/data/prepmaps/'
+        #d_act  = '/global/cscratch1/sd/yguan/cmblens/output/K_space_prepared/'
+        d_act  = '/global/homes/o/omard/cmblens/output/K_space_prepared/'
         d_maps = Dir+'cmb/map2d_lcmb/'
         d_alm  = Dir+'cmb/alm/'
         d_aps  = Dir+'cmb/aps/'
@@ -146,7 +113,7 @@ class filename:
         #//// basic tags ////#
 
         # map
-        stag = params.stype+'_'+params.psa+'_ns'+str(params.nside)+'_a'+str(params.ascale)+'deg'
+        stag = params.stype+'_'+params.psa+'_ns'+str(params.nside)+'_lc'+str(params.lcut)+'_a'+str(params.ascale)+'deg'
 
         # output multipole range
         otag = '_oL'+str(params.olmin)+'-'+str(params.olmax)+'_b'+str(params.bn)+params.binspc
@@ -168,8 +135,7 @@ class filename:
         self.lcl = d_inp+'lensed.dat'
 
         # window function
-        #self.fmask = d_msk+'/mask2d_'+params.PSA+'.fits'
-        self.fmask = d_act+'/prepmaps/mask_'+params.PSA+'.fits'
+        self.fmask = d_ACT+'/mask_'+params.PSA+'.fits'
         self.rmask = d_msk+'/'+params.psa+'_n'+str(params.nside)+'.fits'
         self.amask = d_msk+'/'+params.psa+'_n'+str(params.nside)+'_a'+str(params.ascale)+'.fits'
 
@@ -179,10 +145,12 @@ class filename:
         self.aalm = [d_inp+'/aalm/aalm_'+str(x)+'.fits' for x in ids0]
 
         self.imap = {}
+        #self.omap = {}
         self.alm  = {}
         for mtype in ['T','E','B']:
             if   params.stype == 'lcmb':
-                self.imap[mtype] = [d_act+'prepmaps/preparedSimset00_Map'+x+'_'+mtype+'_'+params.PSA+'.fits' for x in ids]
+                #self.imap[mtype] = [Dir+'cmb/map2d_lcmb/preparedSimset00_Map'+x+'_'+mtype+'_'+params.PSA+'.fits' for x in ids]
+                self.imap[mtype] = [d_act+'preparedSimset00_Map'+x+'_'+mtype+'_'+params.PSA+'.fits' for x in ids]
             elif params.stype == 'a1p0':
                 self.imap[mtype] = [Dir+'cmb/map2d_a1p0/preparedSimset00_Map'+x+'_'+mtype+'_'+params.PSA+'.fits' for x in ids]
             elif params.stype == 'a0p3':
@@ -195,7 +163,7 @@ class filename:
             self.alm[mtype]  = [d_alm+'/'+mtype+'_'+stag+'_'+x+'.fits' for x in ids] #lensed cmb alm
             # replace sim to real
             if params.doreal: 
-                self.imap[mtype][0] = d_maps+'/preparedMap_'+mtype+'_'+params.PSA+'.fits'
+                self.imap[mtype][0] = d_act+'/preparedMap_'+mtype+'_'+params.PSA+'.fits'
 
         # cmb aps
         self.cbi = [d_alm+'/aps_'+stag+otag+'_'+x+'.dat' for x in ids]
@@ -204,9 +172,27 @@ class filename:
         self.ocl = d_aps+'aps_'+ids[0]+'_1d_'+stag+'.dat'
         self.ocb = d_aps+'aps_'+ids[0]+'_1d_'+stag+otag+'.dat'
 
+        # alpha alm, auto
         self.quad = {}
         for q in params.qlist:
-            self.quad[q] = quadest(params.qtype,q,Dir,stag,ltag,otag,ids)
+            self.quad[q] = quad_class.quad_fname(params.qtype,q,Dir,stag+ltag,otag,ids)
+
+        # boss x deep56
+        self.nul = {}
+        for q in params.qlist:
+            self.nul[q] = nullspec(params.qtype,q,Dir,ltag,otag,ids)
+
+
+class nullspec:
+
+    def __init__(self,qtype,q,Dir,ltag,otag,ids):
+
+        qaps = Dir + qtype + '/aps/'
+        self.mxls = qaps+'xl_'+q+ltag+'.dat'
+        self.mxbs = qaps+'xl_'+q+ltag+otag+'.dat'
+        self.oxls = qaps+'xl_'+ids[0]+'_'+q+ltag+'.dat'
+        self.oxbs = qaps+'xl_'+ids[0]+'_'+q+ltag+otag+'.dat'
+        self.xl   = [qaps+'rlz/xl_'+q+ltag+'_'+x+'.dat' for x in ids]
 
 
 class recfunc:
@@ -226,35 +212,35 @@ class recfunc:
 
 
 #initial setup
-def init(PSA='',stype=''):
+def init(PSA='',stype='',loadw=True):
     p = params(PSA,stype)
     f = filename(p)
     r = recfunc(p,f)
-    window(p,f,r)
+    if loadw:
+        r.w, r.w2, r.w4, tw = window(f)
     return p, f, r
 
 
-def window(params,filename,r):
-    #window
-    if 'boss' in params.psa:
-        wsf = hp.fitsfunc.read_map(filename.rmask)
-        #wrf = hp.fitsfunc.read_map(filename.Rmask)*6.02e-5
-        if params.stype=='arot': wsf *= 6e-05
-    if 'deep56' in params.psa:
-        wsf = hp.fitsfunc.read_map(filename.rmask)
-        #wsf *= 0.000141
-        #if params.stype=='lcmb': wsf *= 1.5
-        #if params.stype=='lcmb': wsf *= 0.000141
-        #if params.stype=='arot': wsf *= 0.000141
-        #wrf = hp.fitsfunc.read_map(filename.Rmask)*0.000141
+def filename_init(PSA='',stype=''):
+    p = params(PSA,stype)
+    f = filename(p)
+    return f
+
+
+def window(filename):
+
+    wsf = hp.fitsfunc.read_map(filename.rmask)
+    #if boass and params.stype=='arot': wsf *= 6e-05
 
     print(filename.amask)
-    r.w = hp.fitsfunc.read_map(filename.amask)
+    w = hp.fitsfunc.read_map(filename.amask)
 
-    totw = wsf*r.w
-    r.w2 = np.average(totw**2)
-    r.w4 = np.average(totw**4)
-    print(r.w2,r.w4)
+    totw = wsf*w
+    w2 = np.average(totw**2)
+    w4 = np.average(totw**4)
+    print(w2,w4)
+
+    return w, w2, w4, totw
 
 
 def make_qrec_filter(params,filename,r):

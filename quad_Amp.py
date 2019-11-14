@@ -7,7 +7,7 @@ p = prjlib.params()
 f = prjlib.filename(p)
 b0, b1 = 0, p.bn
 #b0, b1 = 1, 50
-p0 = prjlib.params(stype='arot')
+p0 = prjlib.params(stype='a0p3')
 f0 = prjlib.filename(p0)
 
 # compute amplitude

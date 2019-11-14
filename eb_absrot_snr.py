@@ -40,9 +40,9 @@ for m in [5,6]:
 
         st = ana.statistics(ocl,scl)
         ana.statistics.get_amp(st,fcl)
-        print 'obs A', st.oA, 'sigma(A)', st.sA, 'A>oA', st.p
+        print 'obs A', np.around(st.oA,decimals=3), 'sigma(A)', np.around(st.sA,decimals=3), 'A>oA', st.p
 
         ana.statistics.x1PTE(st)
         ana.statistics.x2PTE(st)
-        print st.px1, st.px2
+        print np.around(st.px1,decimals=3), np.around(st.px2,decimals=3)
 

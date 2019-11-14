@@ -20,6 +20,7 @@ def cmbmap2alm(i,mtype,p,f,r):
     print 'map to alm', i
 
     fmap = enmap.read_map(f.imap[mtype][i])  # load flatsky K-space combined map
+    print 'map amplitude', np.average(fmap**2)
 
     # FT
     print 'compute Fourier modes'
@@ -27,7 +28,7 @@ def cmbmap2alm(i,mtype,p,f,r):
 
     # remove some Fourier modes   
     print 'define lmask'
-    ellmin = 300
+    ellmin = p.lcut
     ellmax = 4000
     lxcut  = 90
     lycut  = 50
@@ -41,11 +42,11 @@ def cmbmap2alm(i,mtype,p,f,r):
 
     # transform cmb map to healpix
     print('transform to healpix')
-    hpmap = enmap.to_healpix(fmap)
-    #hp.fitsfunc.write_map(f.omap[mtype][i],hpmap,overwrite=True)
+    hpmap = enmap.to_healpix(fmap,nside=p.nside)
 
     # from map to alm
     hpmap = r.w * hpmap  # masking
+    #hp.fitsfunc.write_map(f.omap[mtype][i],hpmap,overwrite=True)
     alm = curvedsky.utils.hp_map2alm(p.nside,p.lmax,p.lmax,hpmap)
 
     print("save to file")
@@ -109,9 +110,7 @@ if __name__ == '__main__':
 
     #loop for T/E/B at each realization
     for mtype in p.mlist:
-
         for i in range(p.snmin,p.snmax):
-
             print("map to alm", i)
             cmbmap2alm(i,mtype,p,f,r)
 
