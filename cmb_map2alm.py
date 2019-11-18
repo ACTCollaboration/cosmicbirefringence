@@ -20,7 +20,6 @@ def cmbmap2alm(i,mtype,p,f,r):
     print 'map to alm', i
 
     fmap = enmap.read_map(f.imap[mtype][i])  # load flatsky K-space combined map
-    print 'map amplitude', np.average(fmap**2)
 
     # FT
     print 'compute Fourier modes'
@@ -94,12 +93,12 @@ def cmbalm2cl(p,f,r):
     if p.snmax>=2:
         print('save sim')
         i0 = max(1,p.snmin)
-        np.savetxt(f.scl,np.concatenate((r.eL[None,:],np.mean(cls[i0:,:,:],axis=0),np.std(cls[i0:,:,:],axis=0))).T)
+        np.savetxt(f.scl,np.concatenate((r.el[None,:],np.mean(cls[i0:,:,:],axis=0),np.std(cls[i0:,:,:],axis=0))).T)
         np.savetxt(f.scb,np.concatenate((r.bc[None,:],np.mean(cbs[i0:,:,:],axis=0),np.std(cbs[i0:,:,:],axis=0))).T)
 
     if p.snmin==0:
         print('save real')
-        np.savetxt(f.ocl,np.concatenate((r.eL[None,:],cls[0,:,:])).T)
+        np.savetxt(f.ocl,np.concatenate((r.el[None,:],cls[0,:,:])).T)
         np.savetxt(f.ocb,np.concatenate((r.bc[None,:],cbs[0,:,:])).T)
 
 
@@ -112,7 +111,7 @@ if __name__ == '__main__':
     for mtype in p.mlist:
         for i in range(p.snmin,p.snmax):
             print("map to alm", i)
-            cmbmap2alm(i,mtype,p,f,r)
+            cmbmap2alm(i,'E',p,f,r)
 
     # compute cl
     cmbalm2cl(p,f,r)

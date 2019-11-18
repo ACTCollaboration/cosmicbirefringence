@@ -4,6 +4,7 @@ import sys
 import basic
 import configparser
 import quad_class
+import quad_func
 
 #* Define parameters
 
@@ -17,16 +18,16 @@ class params:
         config = configparser.ConfigParser()
         print('reading '+sys.argv[1])
         config.read(sys.argv[1])
-        conf = config['DEFAULT']
 
         #//// get parameters ////#
+        conf = config['DEFAULT']
         self.nside  = conf.getint('nside',4096) #Nside for fullsky cmb map
         self.npix   = 12*self.nside**2
         self.lmin   = conf.getint('lmin',0)
         self.lmax   = conf.getint('lmax',3000)
-
-        self.olmin  = conf.getint('olmin',2)
-        self.olmax  = conf.getint('olmax',3000)
+        self.olmin  = 1
+        self.olmax  = self.lmax
+        self.ol     = [self.olmin,self.olmax]
         self.bn     = conf.getint('bn',30) 
         self.binspc = conf.get('binspc','')
 
@@ -43,38 +44,21 @@ class params:
         self.ascale = conf.getint('ascale',1)
         self.doreal = conf.getboolean('doreal',False)
         self.chreal = conf.get('chreal','')
-        self.lcut   = conf.get('lcut',100)
+        self.lcut   = conf.getint('lcut',100)
 
         # reconstruction
-        self.qtype  = conf.get('qtype','lens')
-        self.nsidet = conf.getint('nsidet',2048)
-        self.rlmin  = conf.getint('rlmin',500)
-        self.rlmax  = conf.getint('rlmax',3000)
-        self.snn0   = conf.getint('snn0',50)
-        self.snrd   = conf.getint('snrd',100)
-        self.snmf   = conf.getint('snmf',100)
+        self.quad  = quad_func.quad(config['QUADREC'])
 
         #//// derived parameters ////#
         # total number of real + sim
         self.snum = self.snmax - self.snmin
         self.psa  = self.PSA.replace('&','+')
-        self.oL   = [self.olmin,self.olmax]
 
         #mtype
         if self.stype=='a1p0' or self.stype=='a0p3':
             self.mlist = ['E','B']
         else:
             self.mlist = ['T','E','B']
-
-        #definition of T+P
-        self.qDO = [True,True,True,False,False,False]
-        self.qMV = ['TT','TE','EE']
-
-        #definition of qest
-        self.qlist = ['TT','TE','EE','TB','EB','MV']
-        #self.qlist = ['MV']
-        if self.qtype=='rot':
-            self.qlist = ['EB']
 
 
 # Define class filename
@@ -114,12 +98,10 @@ class filename:
 
         # map
         stag = params.stype+'_'+params.psa+'_ns'+str(params.nside)+'_lc'+str(params.lcut)+'_a'+str(params.ascale)+'deg'
+        xtag = params.stype+'_ns'+str(params.nside)+'_lc'+str(params.lcut)+'_a'+str(params.ascale)+'deg'
 
         # output multipole range
-        otag = '_oL'+str(params.olmin)+'-'+str(params.olmax)+'_b'+str(params.bn)+params.binspc
-
-        # kappa reconstruction multipole
-        ltag = '_l'+str(params.rlmin)+'-'+str(params.rlmax)
+        oltag = '_ol'+str(params.olmin)+'-'+str(params.olmax)+'_b'+str(params.bn)+params.binspc
 
         #//// index ////#
         ids  = [str(i).zfill(5) for i in range(500)]
@@ -145,7 +127,6 @@ class filename:
         self.aalm = [d_inp+'/aalm/aalm_'+str(x)+'.fits' for x in ids0]
 
         self.imap = {}
-        #self.omap = {}
         self.alm  = {}
         for mtype in ['T','E','B']:
             if   params.stype == 'lcmb':
@@ -166,21 +147,17 @@ class filename:
                 self.imap[mtype][0] = d_act+'/preparedMap_'+mtype+'_'+params.PSA+'.fits'
 
         # cmb aps
-        self.cbi = [d_alm+'/aps_'+stag+otag+'_'+x+'.dat' for x in ids]
+        self.cbi = [d_alm+'/aps_'+stag+oltag+'_'+x+'.dat' for x in ids]
         self.scl = d_aps+'aps_sim_1d_'+stag+'.dat'
-        self.scb = d_aps+'aps_sim_1d_'+stag+otag+'.dat'
+        self.scb = d_aps+'aps_sim_1d_'+stag+oltag+'.dat'
         self.ocl = d_aps+'aps_'+ids[0]+'_1d_'+stag+'.dat'
-        self.ocb = d_aps+'aps_'+ids[0]+'_1d_'+stag+otag+'.dat'
+        self.ocb = d_aps+'aps_'+ids[0]+'_1d_'+stag+oltag+'.dat'
 
         # alpha alm, auto
-        self.quad = {}
-        for q in params.qlist:
-            self.quad[q] = quad_class.quad_fname(params.qtype,q,Dir,stag+ltag,otag,ids)
-
-        # boss x deep56
         self.nul = {}
-        for q in params.qlist:
-            self.nul[q] = nullspec(params.qtype,q,Dir,ltag,otag,ids)
+        quad_func.quad.fname(params.quad,Dir,ids,stag)
+        for q in params.quad.qlist:
+            self.nul[q]  = nullspec(params.quad.qtype,q,Dir,'_'+xtag+params.quad.ltag,params.quad.otag,ids)
 
 
 class nullspec:
@@ -200,12 +177,12 @@ class recfunc:
     def __init__(self,params,filename):
 
         #multipole
-        self.eL = np.linspace(0,params.lmax,params.lmax+1)
-        self.oL = np.linspace(0,params.olmax,params.olmax+1)
-        self.kL = self.eL*(self.eL+1)*.5
+        self.el = np.linspace(0,params.lmax,params.lmax+1)
+        self.ol = np.linspace(0,params.olmax,params.olmax+1)
+        self.kl = self.el*(self.el+1)*.5
 
         #binned multipole
-        self.bp, self.bc = basic.aps.binning(params.bn,params.oL,spc=params.binspc)
+        self.bp, self.bc = basic.aps.binning(params.bn,params.ol,spc=params.binspc)
 
         #theoretical cl
         self.lcl = basic.aps.read_cambcls(filename.lcl,params.lmin,params.lmax,4,bb=True)/Tcmb**2
@@ -224,7 +201,7 @@ def init(PSA='',stype='',loadw=True):
 def filename_init(PSA='',stype=''):
     p = params(PSA,stype)
     f = filename(p)
-    return f
+    return p, f
 
 
 def window(filename):
@@ -243,19 +220,9 @@ def window(filename):
     return w, w2, w4, totw
 
 
-def make_qrec_filter(params,filename,r):
+def loadocl(filename):
 
-    print('loading TT/EE/BB/TE from pre-computed spectrum:',filename.scl)
-    ocl  = np.loadtxt(filename.scl,unpack=True,usecols=(1,2,3,4))
-    r.oc = ocl
-
-    r.Fl = {}
-    for mtype in ['T','E','B']:
-        r.Fl[mtype] = np.zeros((params.lmax+1,params.lmax+1))
-
-    for l in range(params.rlmin,params.rlmax+1):
-        r.Fl['T'][l,0:l+1] = 1./ocl[0,l]
-        r.Fl['E'][l,0:l+1] = 1./ocl[1,l]
-        r.Fl['B'][l,0:l+1] = 1./ocl[2,l]
+    print('loading TT/EE/BB/TE from pre-computed spectrum:',filename)
+    return np.loadtxt(filename,unpack=True,usecols=(1,2,3,4))
 
 

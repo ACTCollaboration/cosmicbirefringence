@@ -11,6 +11,7 @@ def transmask(nside,ffmask,frmask):  # transform to fullsky mask
     hpmap[hpmap<0] = 0.
     hp.fitsfunc.write_map(frmask,hpmap,overwrite=True)
 
+
 def apodize(frmask,famask,ascale):  # compute apodized window
     mask  = hp.fitsfunc.read_map(frmask) #load mask
     npix  = np.shape(mask)
