@@ -10,6 +10,7 @@ from pixell import enmap
 #from cmblensplus
 import basic
 import curvedsky
+import binning as bins
 
 #local module
 import prjlib
@@ -36,11 +37,11 @@ def cmbmap2alm(i,mtype,p,f,r):
     fmap = enmap.read_map(f.imap[mtype][i])  # load flatsky K-space combined map
 
     # FT
-    print('compute Fourier modes')
+    print('compute Fourier modes',end=" ")
     alm = enmap.fft(fmap)
 
     # remove some Fourier modes   
-    print('define lmask')
+    print('define lmask',end=" ")
     ellmin = p.lcut
     ellmax = 4000
     lxcut  = 90
@@ -50,11 +51,11 @@ def cmbmap2alm(i,mtype,p,f,r):
     alm[kmask<0.5] = 0
 
     # alm -> map
-    print('compute filtered map')
+    print('compute filtered map',end=" ")
     fmap = enmap.ifft(alm).real
 
     # transform cmb map to healpix
-    print('transform to healpix')
+    print('transform to healpix',end=" ")
     hpmap = enmap.to_healpix(fmap,nside=p.nside)
 
     # from map to alm
@@ -71,13 +72,13 @@ def cmbalm2cl(f,w2,snmin,snmax,lmax,bn=50,spc='',mlist=['T','E','B']):
     # output is ell, TT, EE, BB, TE, TB, EB
 
     L   = np.linspace(0,lmax,lmax+1)
-    mb  = prjlib.multipole_binning(bn,spc=spc,lmax=lmax)
-    cbs = np.zeros((snmax,6,bn))
-    cls = np.zeros((snmax,6,lmax+1))
+    mb  = bins.multipole_binning(bn,spc=spc,lmax=lmax)
+    cbs = np.zeros((snmax+1,6,bn))
+    cls = np.zeros((snmax+1,6,lmax+1))
 
-    for i in range(snmin,snmax):
+    for i in range(snmin,snmax+1):
 
-        print('load alm', i)
+        print('load alm', i, end=" ")
 
         #load cmb alms
         Ealm = pickle.load(open(f.alm['E'][i],"rb"))
@@ -104,17 +105,16 @@ def cmbalm2cl(f,w2,snmin,snmax,lmax,bn=50,spc='',mlist=['T','E','B']):
         np.savetxt(f.cli[i],np.concatenate((L[None,:],cls[i,:,:])).T)
 
     # save to files
-    if snmax>=2:
+    if snmax>=1:
         print('save sim')
         i0 = max(1,snmin)
         np.savetxt(f.scl,np.concatenate((L[None,:],np.mean(cls[i0:,:,:],axis=0),np.std(cls[i0:,:,:],axis=0))).T)
-        np.savetxt(f.scb,np.concatenate((mb.bc[None,:],np.mean(cbs[i0:,:,:],axis=0),np.std(cbs[i0:,:,:],axis=0))).T)
+        #np.savetxt(f.scb,np.concatenate((mb.bc[None,:],np.mean(cbs[i0:,:,:],axis=0),np.std(cbs[i0:,:,:],axis=0))).T)
 
-    if snmin==0:
-        print('save real')
-        np.savetxt(f.ocl,np.concatenate((L[None,:],cls[0,:,:])).T)
-        np.savetxt(f.ocb,np.concatenate((mb.bc[None,:],cbs[0,:,:])).T)
-
+    #if snmin==0:
+    #    print('save real')
+    #    np.savetxt(f.ocl,np.concatenate((L[None,:],cls[0,:,:])).T)
+    #    np.savetxt(f.ocb,np.concatenate((mb.bc[None,:],cbs[0,:,:])).T)
 
 if __name__ == '__main__':
     import os
@@ -124,13 +124,12 @@ if __name__ == '__main__':
 
     #loop for T/E/B at each realization
     for mtype in p.mlist:
-        for i in range(p.snmin,p.snmax):
+        for i in range(p.snmin,p.snmax+1):
             if not os.path.exists(f.alm[mtype][i]):
-                print("map to alm", i)
+                print("map to alm", i, end=" ")
                 cmbmap2alm(i,mtype,p,f,r)
 
     # compute cl
     cmbalm2cl(f,r.w2,p.snmin,p.snmax,p.lmax,bn=p.bn,spc=p.binspc,mlist=p.mlist)
-    #cmbalm2cl(p,f,r)
 
 

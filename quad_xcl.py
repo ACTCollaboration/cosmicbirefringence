@@ -6,6 +6,7 @@ import curvedsky
 import basic
 import prjlib
 import quad_func
+import binning as bins
 
 
 p, f, r = prjlib.init(loadw=False)
@@ -53,15 +54,15 @@ for q in p.quad.qlist:
         if i>0:  np.savetxt(px.quad.f[q].cl[i],np.concatenate((p.quad.eL[None,:],cl[i,:,:])).T)
 
     # save to file
-    mb = prjlib.multipole_binning(p.quad.bn,spc=p.quad.binspc)
+    mb = bins.multipole_binning(p.quad.bn,spc=p.quad.binspc)
     cb = prjlib.binning(cl,mb)
     if p.snmax>=2:
         print('save sim')
         np.savetxt(px.quad.f[q].mcls,np.concatenate((p.quad.eL[None,:],np.mean(cl[1:,:,:],axis=0),np.std(cl[1:,:,:],axis=0))).T)
-        np.savetxt(px.quad.f[q].mcbs,np.concatenate((p.quad.bc[None,:],np.mean(cb[1:,:,:],axis=0),np.std(cb[1:,:,:],axis=0))).T)
+        #np.savetxt(px.quad.f[q].mcbs,np.concatenate((p.quad.bc[None,:],np.mean(cb[1:,:,:],axis=0),np.std(cb[1:,:,:],axis=0))).T)
 
     if p.snmin==0:
         print('save real')
         np.savetxt(px.quad.f[q].ocls,np.concatenate((p.quad.eL[None,:],cl[0,:,:])).T)
-        np.savetxt(px.quad.f[q].ocbs,np.concatenate((p.quad.bc[None,:],cb[0,:,:])).T)
+        #np.savetxt(px.quad.f[q].ocbs,np.concatenate((p.quad.bc[None,:],cb[0,:,:])).T)
 

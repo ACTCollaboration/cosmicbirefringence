@@ -5,13 +5,10 @@ import healpy as hp
 import sys
 import basic
 import configparser
-import quad_class
 import quad_func
 import analysis as ana
+import binning as bins
 
-#* Define parameters
-
-Tcmb = 2.72e6
 
 def set_config(pfile='',chvals='',PSA='',stype='',doreal='',dodust='',dearot='',rlmin='',rlmax=''):
     # loading config file
@@ -48,7 +45,7 @@ def set_config(pfile='',chvals='',PSA='',stype='',doreal='',dodust='',dearot='',
 
 class params:
 
-    def __init__(self,config):
+    def __init__(self,config,qtagext=''):
 
         #//// get parameters ////#
         conf = config['DEFAULT']
@@ -63,7 +60,7 @@ class params:
         self.binspc = conf.get('binspc','')
 
         self.snmin  = conf.getint('snmin',0)
-        self.snmax  = conf.getint('snmax',101)
+        self.snmax  = conf.getint('snmax',100)
         self.stype = conf.get('stype','lcmb')
         self.PSA  = conf.get('PSA','s14&15_deep56')
         self.ascale = conf.getint('ascale',1)
@@ -73,6 +70,8 @@ class params:
         self.lcut   = conf.getint('lcut',100)
 
         # reconstruction
+        self.qtagext = config['QUADREC'].get('qtagext','')
+        if qtagext != '': self.qtagext = qtagext
         self.quad  = quad_func.quad(config['QUADREC'])
 
 
@@ -80,43 +79,49 @@ class params:
         #dearot
         if self.dearot:
             if not self.doreal:    sys.exit('derot abs angle: doreal should be True')
-            if self.dodust:        sys.exit('derot abs angle: dodust should be False')
             if self.stype!='lcmb': sys.exit('derot abs angle: stype should be lcmb')
 
 
         #//// derived parameters ////#
         # total number of real + sim
-        self.snum = self.snmax - self.snmin
+        self.snum = self.snmax - self.snmin + 1
         self.psa  = self.PSA.replace('&','+')
 
         #mtype
-        if '0p' in self.stype or self.dodust:
+        if '0p' in self.stype or self.stype=='dust':
             self.mlist = ['E','B']
         else:
             self.mlist = ['T','E','B']
 
         #rlz num
         if '0p' in self.stype:
-            self.quad.snn0 = 50
-            self.quad.snrd = 100
-            self.quad.snmf = 100
+            self.quad.n0min = 1
+            self.quad.n0max = 50
+            self.quad.rdmin = 1
+            self.quad.rdmax = 100
+            self.quad.mfmin = 1
+            self.quad.mfmax = 100
 
         #doreal
-        if self.stype in ['absrot','relrot'] or self.dodust:
+        if self.stype in ['dust']:
             self.doreal = False
+
+        #noreal
+        if self.stype in ['absrot','relrot']:
+            self.doreal = False
+            self.snmin  = 1
 
         # directory
         self.Dir = '/global/homes/t/toshiyan/Work/Ongoing/ACT/data/curvedsky/'
         
         # tag
         self.stag = self.stype+'_'+self.psa+'_ns'+str(self.nside)+'_lc'+str(self.lcut)+'_a'+str(self.ascale)+'deg'
-        self.ids = [str(i).zfill(5) for i in range(500)]
+        self.ids = [str(i).zfill(5) for i in range(501)]
         if self.doreal: self.ids[0] = 'real'
-        if self.dodust: self.ids[0] = self.ids[0] + '_dust'
         if self.dearot: self.ids[0] = self.ids[0] + '_dearot'
         
         # alpha reconstruction
-        quad_func.quad.fname(self.quad,self.Dir,self.ids,self.stag)
+        quad_func.quad.fname(self.quad,self.Dir,self.ids,self.stag,self.qtagext)
 
 
 
@@ -146,6 +151,8 @@ class filename:
             d_act = '/global/cscratch1/sd/yguan/sims/v0.6/teb_biref/'
         elif 'a0p' in params.stype:
             d_act = '/global/cscratch1/sd/yguan/sims/v0.6/teb_'+params.stype[1:].replace('p','.')+'/'
+        elif params.stype=='dust':
+            d_act  = params.Dir+'cmb/dust/'
         else:
             d_act = '/global/cscratch1/sd/yguan/sims/v0.6/teb_'+params.stype+'/'
         Dir = params.Dir
@@ -175,9 +182,10 @@ class filename:
 
         #//// CMB, noise, input kappa, input alpha, dust, ... ////#
         ids  = params.ids
-        ids0 = [str(i).zfill(5) for i in range(500)]
+        ids0 = [str(i).zfill(5) for i in range(501)]
         # change 1st index
-        ids0[0] = ids0[1]
+        if params.stype=='lcmb':
+            ids0[0] = ids0[1]
 
         self.palm = [d_act+'/alex/fullskyPhi_alm_'+x+'.fits' for x in ids0]
         self.amap = [d_yln+'/fullskyalpha_set0_id'+str(xi)+'.fits' for xi in range(501)]
@@ -192,6 +200,7 @@ class filename:
             # replace sim to real
             if params.doreal: 
                 self.imap[mtype][0] = d_act+'/preparedMap_'+mtype+'_'+params.PSA+'.fits'
+
         
         # dust map
         self.dust = '/project/projectdirs/act/data/curvedsky/dust/thermaldust_353GHz.fits'
@@ -217,25 +226,26 @@ class recfunc:
         self.bp, self.bc = basic.aps.binning(params.bn,params.ol,spc=params.binspc)
 
         #theoretical cl
+        Tcmb = 2.72e6
         self.lcl = basic.aps.read_cambcls(filename.lcl,params.lmin,params.lmax,4,bb=True)/Tcmb**2
 
 
 
 #////////// Initial setup //////////#
-def params_init(pfile='',chvals='',PSA='',stype='',doreal='',dodust='',dearot='',rlmin='',rlmax=''):
+def params_init(pfile='',chvals='',PSA='',stype='',doreal='',dodust='',dearot='',rlmin='',rlmax='',qtagext=''):
     config = set_config(pfile,chvals,PSA,stype,doreal,dodust,dearot,rlmin,rlmax)
-    p = params(config)
+    p = params(config,qtagext)
     return p
 
 
-def filename_init(pfile='',chvals='',PSA='',stype='',doreal='',dodust='',dearot='',rlmin='',rlmax=''):
-    p = params_init(pfile,chvals,PSA,stype,doreal,dodust,dearot,rlmin,rlmax)
+def filename_init(pfile='',chvals='',PSA='',stype='',doreal='',dodust='',dearot='',rlmin='',rlmax='',qtagext=''):
+    p = params_init(pfile,chvals,PSA,stype,doreal,dodust,dearot,rlmin,rlmax,qtagext)
     f = filename(p)
     return p, f
 
 
-def init(pfile='',chvals='',PSA='',stype='',doreal='',rlmin='',dodust='',dearot='',rlmax='',loadw=True):
-    p, f = filename_init(pfile,chvals,PSA,stype,doreal,dodust,dearot,rlmin,rlmax)
+def init(pfile='',chvals='',PSA='',stype='',doreal='',rlmin='',dodust='',dearot='',rlmax='',loadw=True,qtagext=''):
+    p, f = filename_init(pfile,chvals,PSA,stype,doreal,dodust,dearot,rlmin,rlmax,qtagext)
     r = recfunc(p,f)
     if loadw:
         r.w, r.w2, r.w4, tw = window(f)
@@ -245,17 +255,12 @@ def init(pfile='',chvals='',PSA='',stype='',doreal='',rlmin='',dodust='',dearot=
 def window(filename):
 
     wsf = hp.fitsfunc.read_map(filename.rmask)
-    #if boass and params.stype=='arot': wsf *= 6e-05
-
-    print(filename.amask)
-    w = hp.fitsfunc.read_map(filename.amask)
-
-    totw = wsf*w
+    wap = hp.fitsfunc.read_map(filename.amask)
+    totw = wsf*wap
     w2 = np.average(totw**2)
     w4 = np.average(totw**4)
     print(w2,w4)
-
-    return w, w2, w4, totw
+    return wap, w2, w4, totw
 
 
 def loadocl(filename):
@@ -265,108 +270,38 @@ def loadocl(filename):
 
 #////////// Multipole binning //////////
 
-class multipole_binning:
-
-    def __init__(self,n,spc='p2',lmin=1,lmax=2048):
-        self.n = n
-        self.spc = spc
-        self.lmin = lmin
-        self.lmax = lmax
-        self.bp, self.bc = basic.aps.binning(n,[lmin,lmax],spc=spc)
-
-
 def binning_all(bn,bn1=10,lmin=10,Lsp=2048):
-    if Lsp==2048:
-        mb0 = multipole_binning(bn,spc='p2',lmin=lmin,lmax=2048)
+    if Lsp>=2048:
+        mb0 = bins.multipole_binning(bn,spc='p2',lmin=lmin,lmax=Lsp)
         mb1 = None
         mb  = mb0
     else:
-        mb  = multipole_binning(bn,spc='p2',lmin=lmin,lmax=Lsp)
-        mb0 = multipole_binning(bn,spc='p2',lmin=lmin,lmax=Lsp)
-        mb1 = multipole_binning(bn1,spc='',lmin=Lsp+1,lmax=2048)
+        mb  = bins.multipole_binning(bn,spc='p2',lmin=lmin,lmax=Lsp)
+        mb0 = bins.multipole_binning(bn,spc='p2',lmin=lmin,lmax=Lsp)
+        mb1 = bins.multipole_binning(bn1,spc='',lmin=Lsp+1,lmax=2048)
         mb.n = mb0.n + mb1.n
         mb.bp = np.concatenate((mb0.bp,mb1.bp[1:]))
         mb.bc = np.concatenate((mb0.bc,mb1.bc))
     return mb, mb0, mb1
 
 
-def binning(cl,b0,b1=None):
-
-    if b1 is None:
-        return binning1(cl,b0)
-    else:
-        return binning2(cl,b0,b1)
-
-
-def binning1(cl,b):
-
-    if b.lmax > np.shape(cl)[-1] - 1:
-        sys.exit('size of b.lmax is wrong')
-
-    if np.ndim(cl) == 1:
-        cb = basic.aps.cl2bcl(b.n,b.lmax,cl[:b.lmax+1],lmin=b.lmin,spc=b.spc)
-
-    if np.ndim(cl) == 2:
-        snmax = np.shape(cl)[0]
-        cb = np.array([basic.aps.cl2bcl(b.n,b.lmax,cl[i,:b.lmax+1],lmin=b.lmin,spc=b.spc) for i in range(snmax)])
-
-    if np.ndim(cl) == 3:
-        snmax = np.shape(cl)[0]
-        clnum = np.shape(cl)[1]
-        cb = np.array([[basic.aps.cl2bcl(b.n,b.lmax,cl[i,c,:b.lmax+1],lmin=b.lmin,spc=b.spc) for c in range(clnum)] for i in range(snmax)])
-
-    return cb
-
-
-def binning2(cl,b0,b1):
-
-    if b1.lmin != b0.lmax+1:
-        sys.exit('wrong split')
-    if b1.lmax > np.shape(cl)[-1]-1:
-        sys.exit('wrong lmax')
-
-    if np.ndim(cl) == 1:
-        cb0 = basic.aps.cl2bcl(b0.n,b0.lmax,cl[:b0.lmax+1],spc=b0.spc,lmin=b0.lmin)
-        cb1 = basic.aps.cl2bcl(b1.n,b1.lmax,cl[:b1.lmax+1],spc=b1.spc,lmin=b1.lmin)
-        return np.concatenate((cb0,cb1))
-
-    if np.ndim(cl) == 2:
-        cb0 = binning(cl,b0)
-        cb1 = binning(cl,b1)
-        return np.concatenate((cb0,cb1),axis=1)
-
-
-#////////// Binned Spectrum //////////
-
 def binned_claa(Lmax,mb0,mb1=None):
     L = np.linspace(0,Lmax,Lmax+1)
     fcl = 1e-4*2*np.pi/(L**2+L+1e-30)
-    return binning(fcl,mb0,mb1)
+    return bins.binning(fcl,mb0,mb1)
 
 
 def binned_cl(fcl,mb0,mb1=None,cn=1):
     scl = np.loadtxt(fcl,unpack=True)[cn]
-    return binning(scl,mb0,mb1)
+    return bins.binning(scl,mb0,mb1)
 
 
 def binned_cl_rlz(fcl,sn0,sn1,mb0,mb1=None,cn=1):
-    scl = np.array([np.loadtxt(fcl[i],unpack=True)[cn] for i in range(sn0+1,sn1+1)])
-    return binning(scl,mb0,mb1)
+    scl = np.array([np.loadtxt(fcl[i],unpack=True)[cn] for i in range(sn0,sn1+1)])
+    return bins.binning(scl,mb0,mb1)
 
 
 #////////// Absrot estimate //////////
-
-def est_angle(oCX,sCX,oCY,sCY,fcl=1.):
-    # method for estimating amplitude
-    ocl = oCX/(oCY*2*np.pi/180.)
-    scl = sCX/(sCY*2*np.pi/180.)
-    st = ana.statistics(ocl,scl)
-    ana.statistics.get_amp(st,fcl)
-    print('obs A [deg]', np.around(st.oA,decimals=3), 'sigma(A) [deg]', np.around(st.sA,decimals=3), 'A>oA', st.p)
-    ana.statistics.x1PTE(st)
-    ana.statistics.x2PTE(st)
-    print(np.around(st.px1,decimals=3), np.around(st.px2,decimals=3))
-
 
 def est_angles(patch,spec='EB',bn=50,spc='',lmin=200,lmax=2048,doreal='True',dearot='False',sn=100):
     if spec == 'TB': m=5
@@ -378,37 +313,17 @@ def est_angles(patch,spec='EB',bn=50,spc='',lmin=200,lmax=2048,doreal='True',dea
     ocl = np.loadtxt(f.ocl,unpack=True,usecols=(2,3,4,m))
     ocb = binning(ocl,mb)
     if spec=='TB':
-        est_angle(ocb[3,:],scb[:,3,:],ocb[2,:],scb[:,2,:])
+        ana.est_absangle(ocb[3,:],scb[:,3,:],ocb[2,:],scb[:,2,:])
     if spec=='EB':
-        est_angle(ocb[3,:],scb[:,3,:],ocb[0,:]-ocb[1,:],scb[:,0,:]-scb[:,1,:])
+        ana.est_absangle(ocb[3,:],scb[:,3,:],ocb[0,:]-ocb[1,:],scb[:,0,:]-scb[:,1,:])
 
 
-#////////// HL Likelihood //////////
-
-def lnLLH(rx,fcl,icov,bi=None):
-    # rx = ocb/scb
-    # icov is the covariance of ocb
-    bn, bn = np.shape(icov)
-    if bi is None:
-        gx = np.sign(rx-1.)*np.sqrt(2.*(rx-np.log(rx)-1.))
-    else:
-        gx = np.zeros(bn)
-        gx[bi] = np.sign(rx[bi]-1.)*np.sqrt(2.*(rx[bi]-np.log(rx[bi])-1.))
-    return -0.5*np.dot(gx*fcl,np.dot(icov,gx*fcl))
-
-
-def lnLLHs(rx,fcl,icov,bi=None):
-    # rx = ocb/scb
-    # icov is the covariance of ocb
-    bn, bn = np.shape(icov)
-    gx = np.sign(rx-1.)*np.sqrt(2.*(rx-np.log(rx)-1.))
-    return -0.5*gx*fcl[bi]*icov[bi,bi]*gx*fcl[bi]
-
-def posterior(A,ocb,mcb,macb,icov,c0,c1):
+#////////// Likelihood //////////
+def posterior(A,ocb,mcb,dacb,icov,c0,c1):
     Lh = np.zeros(len(A))
     for i, a in enumerate(A):
-        scb = c0*(mcb+(a/.1)*(macb-mcb))
-        Lh[i] = np.exp(lnLLH(ocb/scb,mcb*c1,icov))
+        scb = c0*(mcb+(a/.1)*dacb)
+        Lh[i] = np.exp(ana.lnLHL(ocb/scb,mcb*c1,icov))
     return Lh
 
     
@@ -420,22 +335,31 @@ def Lgauss(bi,Ab,Afb,icov):
 
 #////////// Direct Likelihood //////////
 
-def fit_skewnorm(xA,dat):
-    mA, vA, sA = sp.stats.skewnorm.fit(dat)
-    #xA = np.arange(min(0,np.min(dat)),np.max(dat),0.001)
-    return sp.stats.skewnorm.pdf(xA,mA,vA,sA)
+#def fit_skewnorm(xA,dat):
+#    mA, vA, sA = sp.stats.skewnorm.fit(dat)
+#    #xA = np.arange(min(0,np.min(dat)),np.max(dat),0.001)
+#    return sp.stats.skewnorm.pdf(xA,mA,vA,sA)
 
 
 def like(dat,odat=0.0,ddat=0.01):
     return (np.abs(dat-odat)<=ddat).sum()/np.float(len(dat)) / (2.*ddat)
 
 
-def calc_like(Ainp,dat,odat=None,ddat=0.01):
+def calc_like_direct(Ainp,dat,odat=None,ddat=0.01):
     L = np.zeros(len(Ainp))
     if odat is None: odat = np.zeros(len(Ainp))
     for i, Ai in enumerate(Ainp):
         L[i] = like(dat[i,:],odat=odat[i],ddat=ddat)
     return L
+
+
+def calc_like_skewnorm(Ainp,dat,odat=0.0):
+    from scipy import stats
+    like = np.zeros(len(Ainp))
+    for i, Ai in enumerate(Ainp):
+        mA, vA, sA = stats.skewnorm.fit(dat[i,:])
+        like[i] = stats.skewnorm.pdf(odat[i],mA,vA,sA)
+    return like
 
 
 def calc_CDF(L,As,interp='cubic'):
@@ -466,15 +390,15 @@ def quadstats(patch,As,sn,mb0,mb1=None,rlmin='200',wi='lcmb',doreal='True'):
     fcb = binned_claa(2048,mb0,mb1)
 
     ps  = params_init(stype='lcmb',PSA='s14&15_'+patch,rlmin=rlmin)
-    scb = binned_cl_rlz(ps.quad.f['EB'].cl,0,sn,mb0,mb1)
-    n0s = np.loadtxt(ps.quad.f['EB'].n0bl,unpack=True)[1]
+    scb = binned_cl_rlz(ps.quad.f['EB'].cl,1,sn,mb0,mb1)
+    sn0 = binned_cl(ps.quad.f['EB'].n0bl,mb0,mb1)
 
     if wi=='LCMB':
-        scb1 = binned_cl_rlz(ps.quad.f['EB'].cl,100,200,mb0,mb1)
+        scb1 = binned_cl_rlz(ps.quad.f['EB'].cl,101,200,mb0,mb1)
         wi, __, __ = ana.opt_weight(scb1/fcb)
     else:
         pw = params_init(stype=wi,PSA='s14&15_'+patch,rlmin=rlmin)
-        acb = binned_cl_rlz(pw.quad.f['EB'].cl,0,sn,mb0,mb1)
+        acb = binned_cl_rlz(pw.quad.f['EB'].cl,1,sn,mb0,mb1)
         wi, __, __ = ana.opt_weight(acb/fcb,diag=True)
 
     if doreal:
@@ -488,23 +412,18 @@ def quadstats(patch,As,sn,mb0,mb1=None,rlmin='200',wi='lcmb',doreal='True'):
     for i, A in enumerate(As):
         if A==0.:
             Ab[i,:] = np.sum(wi*scb/fcb,axis=1)
-            #oA[i] = np.mean(np.sum(wi*scb/fcb,axis=1))
             oA[i] = np.sum(wi*ocb/fcb)
         else:
             pa = params_init(stype='a'+str(A).replace('.','p'),PSA='s14&15_'+patch,rlmin=rlmin)
-            acb = binned_cl_rlz(pa.quad.f['EB'].cl,0,sn,mb0,mb1)
-            n0a = np.loadtxt(pa.quad.f['EB'].n0bl,unpack=True)[1]
-            Ocb = ocb + binning(n0s-n0a,mb0,mb1)
-            oA[i] = np.sum(wi*Ocb/fcb)
-            #dn0 = np.loadtxt(pa.quad.f['EB'].n0bl,unpack=True)[1] - n0
-            #acb = prjlib.binning(acl+dn0[None,:],bn,spc,lmin=lmin)[:,b0:b1]
+            acb = binned_cl_rlz(pa.quad.f['EB'].cl,1,sn,mb0,mb1)
+            an0 = binned_cl(pa.quad.f['EB'].n0bl,mb0,mb1)
+            oA[i] = np.sum(wi*(ocb+sn0-an0)/fcb)
             Ab[i,:] = np.sum(wi*acb/fcb,axis=1)
 
     c0, c1 = lintrans(Ab,As)
     estAb = (Ab-c0)/c1
     estoA = (oA-c0)/c1
     #plot(As,np.mean(Ab,axis=1),colors[bi]+'-')
-
     return estAb, estoA
 
 
