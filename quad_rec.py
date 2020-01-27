@@ -9,7 +9,7 @@ import prjlib
 import quad_func
 
 
-def qrec_aps(pquad,q,snmin,snmax,f,r,psquad,stype,overwrite=False):
+def qrec_aps(pquad,q,snmin,snmax,f,r,psquad,stype,rdn0=True,overwrite=False):
 
     oLmax = pquad.oLmax
     cl = np.zeros((snmax+1,4,oLmax+1))
@@ -37,7 +37,7 @@ def qrec_aps(pquad,q,snmin,snmax,f,r,psquad,stype,overwrite=False):
             else:
                 klm = 0.*glm
 
-        if i==0: #and p.doreal:
+        if i==0 and rdn0:
             rdn0 = np.loadtxt(p.quad.f[q].rdn0[i],unpack=True,usecols=(1,2))
         else:
             #rdn0 = n0 + n0/(pquad.mfsim-1.)
@@ -55,10 +55,6 @@ def qrec_aps(pquad,q,snmin,snmax,f,r,psquad,stype,overwrite=False):
         print('save sim average') 
         np.savetxt(pquad.f[q].mcls,np.concatenate((pquad.eL[None,:],np.mean(cl[1:,:,:],axis=0),np.std(cl[1:,:,:],axis=0))).T)
 
-    #if snmin==0:
-    #    print('save real')
-    #    np.savetxt(pquad.f[q].ocls,np.concatenate((pquad.eL[None,:],cl[0,:,:])).T)
-
 
 p, f, r = prjlib.init()
 ps, fs, _ = prjlib.init(stype='lcmb',dodust='False')
@@ -67,26 +63,33 @@ ps, fs, _ = prjlib.init(stype='lcmb',dodust='False')
 ow = False
 #ow = True
 snmax = p.snmax
-if p.stype!='lcmb': snmax = 100
+if p.stype not in ['lcmb','dust']: snmax = 100
 
 if p.stype in ['absrot','relrot','dust']:
+    rdn0 = False
     ocl = prjlib.loadocl(fs.scl)
     quad_func.quad.diagcinv(ps.quad,ocl)
     quad_func.quad.diagcinv(p.quad,ocl)
     quad_func.quad.qrec(ps.quad,p.snmin,snmax,f.alm,r.lcl,qout=p.quad,overwrite=ow)
-    #quad_func.quad.rdn0(ps.quad,p.snmin,snmax,f.alm,r.w4,r.lcl,qout=p.quad,overwrite=ow,falms=fs.alm)
+    if p.stype=='dust':
+        rdn0 = True
+        quad_func.quad.rdn0(ps.quad,p.snmin,p.snmax,f.alm,r.w4,r.lcl,qout=p.quad,overwrite=ow,falms=fs.alm)
 else:
+    rdn0 = True
     ps = p
     ocl = prjlib.loadocl(f.scl)
     quad_func.quad.diagcinv(p.quad,ocl)
     quad_func.quad.al(p.quad,r.lcl,ocl)
     quad_func.quad.qrec(p.quad,p.snmin,snmax,f.alm,r.lcl,overwrite=ow)
     quad_func.quad.n0(p.quad,f.alm,r.w4,r.lcl,overwrite=ow)
-    quad_func.quad.qrec(p.quad,p.quad.mfmin,p.quad.mfmax,f.alm,r.lcl,overwrite=ow)
-    quad_func.quad.mean(p.quad,r.w4,overwrite=ow)
-    quad_func.quad.rdn0(p.quad,p.snmin,p.snmax,f.alm,r.w4,r.lcl,overwrite=ow)
+    #quad_func.quad.qrec(p.quad,p.quad.mfmin,p.quad.mfmax,f.alm,r.lcl,overwrite=ow)
+    #quad_func.quad.mean(p.quad,r.w4,overwrite=ow)
+    if p.PSA == 's14&15_deep56':
+        quad_func.quad.rdn0(p.quad,p.snmin,p.snmax,f.alm,r.w4,r.lcl,overwrite=ow)
 
 #//// Power spectrum ////#
-for q in p.quad.qlist:
-    qrec_aps(p.quad,q,p.snmin,snmax,f,r,ps.quad,p.stype,overwrite=ow)
+if p.PSA == 's14&15_deep56':
+    ow = True
+    for q in p.quad.qlist:
+        qrec_aps(p.quad,q,p.snmin,p.snmax,f,r,ps.quad,p.stype,rdn0=rdn0,overwrite=ow)
 

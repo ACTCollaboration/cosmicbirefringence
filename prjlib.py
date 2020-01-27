@@ -10,7 +10,7 @@ import analysis as ana
 import binning as bins
 
 
-def set_config(pfile='',chvals='',PSA='',stype='',doreal='',dodust='',dearot='',rlmin='',rlmax=''):
+def set_config(pfile='',chvals='',PSA='',stype='',doreal='',dodust='',dearot='',rlmin='',rlmax='',qtagext=''):
     # loading config file
     config = configparser.ConfigParser()
 
@@ -39,13 +39,14 @@ def set_config(pfile='',chvals='',PSA='',stype='',doreal='',dodust='',dearot='',
     if dearot != '': config.set('DEFAULT','dearot',dearot)
     if rlmin !='':   config.set('QUADREC','rlmin',rlmin)
     if rlmax !='':   config.set('QUADREC','rlmax',rlmax)
+    if qtagext != '': config.set('QUADREC','qtagext',qtagext)
 
     return config
 
 
 class params:
 
-    def __init__(self,config,qtagext=''):
+    def __init__(self,config,ver=''):
 
         #//// get parameters ////#
         conf = config['DEFAULT']
@@ -69,9 +70,9 @@ class params:
         self.dearot = conf.getboolean('dearot',False)
         self.lcut   = conf.getint('lcut',100)
 
+        self.ver   = conf.get('ver',ver)
+
         # reconstruction
-        self.qtagext = config['QUADREC'].get('qtagext','')
-        if qtagext != '': self.qtagext = qtagext
         self.quad  = quad_func.quad(config['QUADREC'])
 
 
@@ -101,6 +102,32 @@ class params:
             self.quad.rdmax = 100
             self.quad.mfmin = 1
             self.quad.mfmax = 100
+            self.quad.n0sim = 50
+            self.quad.rdsim = 100
+            self.quad.mfsim = 100
+
+        #specific version
+        if self.ver=='v1':
+            self.quad.n0min = 1
+            self.quad.n0max = 100
+            self.quad.rdmin = 1
+            self.quad.rdmax = 200
+            self.quad.mfmin = 1
+            self.quad.mfmax = 200
+            self.quad.n0sim = 100
+            self.quad.rdsim = 200
+            self.quad.mfsim = 200
+
+        if self.ver=='v2':
+            self.quad.n0min = 1
+            self.quad.n0max = 250
+            self.quad.rdmin = 1
+            self.quad.rdmax = 500
+            self.quad.mfmin = 201
+            self.quad.mfmax = 500
+            self.quad.n0sim = 250
+            self.quad.rdsim = 500
+            self.quad.mfsim = 300
 
         #doreal
         if self.stype in ['dust']:
@@ -121,7 +148,13 @@ class params:
         if self.dearot: self.ids[0] = self.ids[0] + '_dearot'
         
         # alpha reconstruction
-        quad_func.quad.fname(self.quad,self.Dir,self.ids,self.stag,self.qtagext)
+        quad_func.quad.fname(self.quad,self.Dir,self.ids,self.stag)
+
+        # for v1 rec files
+        if self.ver!='':
+            q = 'EB'
+            for i in range(501):
+                self.quad.f[q].cl[i] = self.quad.f[q].cl[i].replace('.dat','_'+self.ver+'.dat')
 
 
 
@@ -232,20 +265,20 @@ class recfunc:
 
 
 #////////// Initial setup //////////#
-def params_init(pfile='',chvals='',PSA='',stype='',doreal='',dodust='',dearot='',rlmin='',rlmax='',qtagext=''):
-    config = set_config(pfile,chvals,PSA,stype,doreal,dodust,dearot,rlmin,rlmax)
-    p = params(config,qtagext)
+def params_init(pfile='',chvals='',PSA='',stype='',doreal='',dodust='',dearot='',rlmin='',rlmax='',qtagext='',ver=''):
+    config = set_config(pfile,chvals,PSA,stype,doreal,dodust,dearot,rlmin,rlmax,qtagext)
+    p = params(config,ver)
     return p
 
 
-def filename_init(pfile='',chvals='',PSA='',stype='',doreal='',dodust='',dearot='',rlmin='',rlmax='',qtagext=''):
-    p = params_init(pfile,chvals,PSA,stype,doreal,dodust,dearot,rlmin,rlmax,qtagext)
+def filename_init(pfile='',chvals='',PSA='',stype='',doreal='',dodust='',dearot='',rlmin='',rlmax='',qtagext='',ver=''):
+    p = params_init(pfile,chvals,PSA,stype,doreal,dodust,dearot,rlmin,rlmax,qtagext,ver)
     f = filename(p)
     return p, f
 
 
-def init(pfile='',chvals='',PSA='',stype='',doreal='',rlmin='',dodust='',dearot='',rlmax='',loadw=True,qtagext=''):
-    p, f = filename_init(pfile,chvals,PSA,stype,doreal,dodust,dearot,rlmin,rlmax,qtagext)
+def init(pfile='',chvals='',PSA='',stype='',doreal='',rlmin='',dodust='',dearot='',rlmax='',loadw=True,qtagext='',ver=''):
+    p, f = filename_init(pfile,chvals,PSA,stype,doreal,dodust,dearot,rlmin,rlmax,qtagext,ver)
     r = recfunc(p,f)
     if loadw:
         r.w, r.w2, r.w4, tw = window(f)
@@ -303,27 +336,37 @@ def binned_cl_rlz(fcl,sn0,sn1,mb0,mb1=None,cn=1):
 
 #////////// Absrot estimate //////////
 
-def est_angles(patch,spec='EB',bn=50,spc='',lmin=200,lmax=2048,doreal='True',dearot='False',sn=100):
+def est_angles(patch,spec='EB',bn=50,spc='',lmin=200,lmax=2048,doreal='True',dearot='False',sn=200,nobb=False,diag=False,disp=''):
     if spec == 'TB': m=5
     if spec == 'EB': m=6
     __, f = filename_init(doreal=doreal,PSA='s14&15_'+patch,dearot=dearot)
-    mb  = multipole_binning(bn,spc=spc,lmin=lmin,lmax=lmax)
+    mb  = bins.multipole_binning(bn,spc=spc,lmin=lmin,lmax=lmax)
     scl = np.array([np.loadtxt(f.cli[i],unpack=True,usecols=(2,3,4,m)) for i in range(1,sn+1)])
-    scb = binning(scl,mb)
-    ocl = np.loadtxt(f.ocl,unpack=True,usecols=(2,3,4,m))
-    ocb = binning(ocl,mb)
+    scb = bins.binning(scl,mb)
+    ocl = np.loadtxt(f.cli[0],unpack=True,usecols=(2,3,4,m))
+    ocb = bins.binning(ocl,mb)
+
     if spec=='TB':
-        ana.est_absangle(ocb[3,:],scb[:,3,:],ocb[2,:],scb[:,2,:])
+        st = ana.est_absangle(ocb[3,:],scb[:,3,:],ocb[2,:],scb[:,2,:],diag=diag,x2pte=False)
+
     if spec=='EB':
-        ana.est_absangle(ocb[3,:],scb[:,3,:],ocb[0,:]-ocb[1,:],scb[:,0,:]-scb[:,1,:])
+        if nobb:
+            st = ana.est_absangle(ocb[3,:],scb[:,3,:],ocb[0,:],scb[:,0,:]-scb[:,1,:],diag=diag,x2pte=False)
+        else:
+            st = ana.est_absangle(ocb[3,:],scb[:,3,:],ocb[0,:]-ocb[1,:],scb[:,0,:]-scb[:,1,:],diag=diag,x2pte=False)
+
+    #print(disp+', obs:',np.around(-st.oA,decimals=3),'[deg]', 'std', np.around(st.sA,decimals=3), '[deg]')
+    print(disp+', obs:',np.around(st.oA,decimals=3),'[deg]', 'std', np.around(st.sA,decimals=3), '[deg]','PTE', np.around(st.p,decimals=3))
 
 
 #////////// Likelihood //////////
-def posterior(A,ocb,mcb,dacb,icov,c0,c1):
+def posterior(A,ocb,mcb,dacb,icov,c0,c1,bmin,bmax):
     Lh = np.zeros(len(A))
     for i, a in enumerate(A):
         scb = c0*(mcb+(a/.1)*dacb)
-        Lh[i] = np.exp(ana.lnLHL(ocb/scb,mcb*c1,icov))
+        cov = np.linalg.inv(icov)
+        iCov = np.linalg.inv(cov[bmin:bmax+1,bmin:bmax+1])
+        Lh[i] = np.exp(ana.lnLHL(ocb[bmin:bmax+1]/scb[bmin:bmax+1],mcb[bmin:bmax+1]*c1[bmin:bmax+1],iCov))
     return Lh
 
     
