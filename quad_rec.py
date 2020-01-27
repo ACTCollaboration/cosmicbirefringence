@@ -1,71 +1,95 @@
 # Reconstruction using quadratic estimator
 import numpy as np
 import healpy as hp
-import cPickle as pickle
-
+import os
+import pickle
 import curvedsky
 import basic
-
 import prjlib
 import quad_func
 
 
-p, f, r = prjlib.init()
-prjlib.make_qrec_filter(p,f,r)
+def qrec_aps(pquad,q,snmin,snmax,f,r,psquad,stype,rdn0=True,overwrite=False):
 
-
-#//// Reconstruction ////#
-quad_func.al(p,f,r)
-quad_func.qrec(p,f.alm,f.quad,r)
-quad_func.n0(p,f.alm,f.quad,r)
-#quad_func.rdn0(p,f.alm,f.quad,r)
-quad_func.mean(p,f.quad,r)
-
-
-#//// Power spectrum ////#
-for q in p.qlist:
-
-    cl = np.zeros((p.snmax,3,p.lmax+1))
-    cb = np.zeros((p.snmax,3,p.bn))
-    n0 = np.loadtxt(f.quad[q].n0bl,unpack=True)[1]
+    oLmax = pquad.oLmax
+    cl = np.zeros((snmax+1,4,oLmax+1))
+    n0 = np.loadtxt(psquad.f[q].n0bs,unpack=True,usecols=(1,2))
   
-    for i in range(p.snmax):
+    #mfg, mfc = pickle.load(open(psquad.f[q].mf,"rb"))
+
+    for i in range(snmin,snmax+1):
+
+        if os.path.exists(pquad.f[q].cl[i]) and not overwrite:
+            continue
 
         print(i)
-        glm = pickle.load(open(f.quad[q].alm[i],"rb"))
-        mfg = pickle.load(open(f.quad[q].mfb[i],"rb"))
-        klm = pickle.load(open(f.aalm[i],"rb"))
+        glm, clm = pickle.load(open(pquad.f[q].alm[i],"rb"))
+        #mfg, mfc = pickle.load(open(psquad.f[q].mfb[i],"rb"))
+        #glm -= mfg
+        #clm -= mfc
+        if pquad.qtype == 'lens':
+            klm = np.complex128(hp.fitsfunc.read_alm(f.palm[i]))
+            klm = curvedsky.utils.lm_healpy2healpix(len(klm),klm,5100)[:oLmax+1,:oLmax+1]
+            klm *= r.kL[:,None]
+        if pquad.qtype == 'rot':
+            if stype !='lcmb':
+                klm = pickle.load(open(f.aalm[i],"rb"))[:oLmax+1,:oLmax+1]
+            else:
+                klm = 0.*glm
 
-        if i==0:
-            try:
-                rdn0 = np.loadtxt(f.quad[q].rdn0[i],unpack=True,usecols=(1,2))
-            except:
-                print('no file for RDN0, use N0')
-                rdn0 = n0 + n0/p.snmf #need to replace to diagonal RDN0
+        if i==0 and rdn0:
+            rdn0 = np.loadtxt(p.quad.f[q].rdn0[i],unpack=True,usecols=(1,2))
         else:
-            rdn0 = n0 + n0/(p.snmf-1.) #need to replace to diagonal RDN0
+            #rdn0 = n0 + n0/(pquad.mfsim-1.)
+            rdn0 = n0 #+ n0/pquad.mfsim
 
         # correct bias terms and MC noise due to mean-field bias
-        cl[i,0,:] = curvedsky.utils.alm2cl(p.lmax,glm-mfg)/r.w4 - rdn0[0,:]
-        cl[i,1,:] = curvedsky.utils.alm2cl(p.lmax,glm-mfg,klm)/r.w2
-        cl[i,2,:] = curvedsky.utils.alm2cl(p.lmax,klm)
-        for j in range(3):
-            cb[i,j,:] = basic.aps.cl2bcl(p.bn,p.lmax,cl[i,j,:],spc=p.binspc)
-            np.savetxt(f.quad[q].cl[i],np.concatenate((r.bc[None,:],cb[i,:,:])).T)
+        cl[i,0,:] = curvedsky.utils.alm2cl(oLmax,glm)/r.w4 - rdn0[0,:]
+        cl[i,1,:] = curvedsky.utils.alm2cl(oLmax,clm)/r.w4 - rdn0[1,:]
+        cl[i,2,:] = curvedsky.utils.alm2cl(oLmax,glm,klm)/r.w2
+        cl[i,3,:] = curvedsky.utils.alm2cl(oLmax,klm)
+        np.savetxt(pquad.f[q].cl[i],np.concatenate((pquad.eL[None,:],cl[i,:,:])).T)
 
     # save to file
-    if p.snmax>=2:
-        print('save sim') 
-        np.savetxt(f.quad[q].mcls,np.concatenate((r.eL[None,:],np.mean(cl[1:,:,:],axis=0),np.std(cl[1:,:,:],axis=0))).T)
-        np.savetxt(f.quad[q].mcbs,np.concatenate((r.bc[None,:],np.mean(cb[1:,:,:],axis=0),np.std(cb[1:,:,:],axis=0))).T)
+    if snmax>=1:
+        print('save sim average') 
+        np.savetxt(pquad.f[q].mcls,np.concatenate((pquad.eL[None,:],np.mean(cl[1:,:,:],axis=0),np.std(cl[1:,:,:],axis=0))).T)
 
-    if p.snmin==0:
-        if p.doreal:
-            print('save real')
-            np.savetxt(f.quad[q].rcls,np.concatenate((r.eL[None,:],cl[0,:,:])).T)
-            np.savetxt(f.quad[q].rcbs,np.concatenate((r.bc[None,:],cb[0,:,:])).T)
-        else:
-            print('save mock obs')
-            np.savetxt(f.quad[q].ocls,np.concatenate((r.eL[None,:],cl[0,:,:])).T)
-            np.savetxt(f.quad[q].ocbs,np.concatenate((r.bc[None,:],cb[0,:,:])).T)
+
+p, f, r = prjlib.init()
+ps, fs, _ = prjlib.init(stype='lcmb',dodust='False')
+
+#//// Reconstruction ////#
+ow = False
+#ow = True
+snmax = p.snmax
+if p.stype not in ['lcmb','dust']: snmax = 100
+
+if p.stype in ['absrot','relrot','dust']:
+    rdn0 = False
+    ocl = prjlib.loadocl(fs.scl)
+    quad_func.quad.diagcinv(ps.quad,ocl)
+    quad_func.quad.diagcinv(p.quad,ocl)
+    quad_func.quad.qrec(ps.quad,p.snmin,snmax,f.alm,r.lcl,qout=p.quad,overwrite=ow)
+    if p.stype=='dust':
+        rdn0 = True
+        quad_func.quad.rdn0(ps.quad,p.snmin,p.snmax,f.alm,r.w4,r.lcl,qout=p.quad,overwrite=ow,falms=fs.alm)
+else:
+    rdn0 = True
+    ps = p
+    ocl = prjlib.loadocl(f.scl)
+    quad_func.quad.diagcinv(p.quad,ocl)
+    quad_func.quad.al(p.quad,r.lcl,ocl)
+    quad_func.quad.qrec(p.quad,p.snmin,snmax,f.alm,r.lcl,overwrite=ow)
+    quad_func.quad.n0(p.quad,f.alm,r.w4,r.lcl,overwrite=ow)
+    #quad_func.quad.qrec(p.quad,p.quad.mfmin,p.quad.mfmax,f.alm,r.lcl,overwrite=ow)
+    #quad_func.quad.mean(p.quad,r.w4,overwrite=ow)
+    if p.PSA == 's14&15_deep56':
+        quad_func.quad.rdn0(p.quad,p.snmin,p.snmax,f.alm,r.w4,r.lcl,overwrite=ow)
+
+#//// Power spectrum ////#
+if p.PSA == 's14&15_deep56':
+    ow = True
+    for q in p.quad.qlist:
+        qrec_aps(p.quad,q,p.snmin,p.snmax,f,r,ps.quad,p.stype,rdn0=rdn0,overwrite=ow)
 
