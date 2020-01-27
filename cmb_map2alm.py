@@ -2,17 +2,17 @@
 import numpy as np
 import healpy as hp
 import sys
-#import cPickle as pickle
 import pickle
-#from orphics import maps
+
+# ACT library
 from pixell import enmap
 
-#from cmblensplus
+# cmblensplus
 import basic
 import curvedsky
 import binning as bins
 
-#local module
+# local
 import prjlib
 
 
@@ -37,25 +37,18 @@ def cmbmap2alm(i,mtype,p,f,r):
     fmap = enmap.read_map(f.imap[mtype][i])  # load flatsky K-space combined map
 
     # FT
-    print('compute Fourier modes',end=" ")
+    print('2D ell filtering in F-space and assign to healpix map')
     alm = enmap.fft(fmap)
 
     # remove some Fourier modes   
-    print('define lmask',end=" ")
-    ellmin = p.lcut
-    ellmax = 4000
-    lxcut  = 90
-    lycut  = 50
     shape, wcs = fmap.shape, fmap.wcs
-    kmask = mask_kspace(shape,wcs,lmin=ellmin,lmax=ellmax,lxcut=lxcut,lycut=lycut)
+    kmask = mask_kspace(shape,wcs,lmin=p.lcut,lmax=4000,lxcut=90,lycut=50)
     alm[kmask<0.5] = 0
 
     # alm -> map
-    print('compute filtered map',end=" ")
     fmap = enmap.ifft(alm).real
 
     # transform cmb map to healpix
-    print('transform to healpix',end=" ")
     hpmap = enmap.to_healpix(fmap,nside=p.nside)
 
     # from map to alm
@@ -67,9 +60,9 @@ def cmbmap2alm(i,mtype,p,f,r):
     pickle.dump((alm),open(f.alm[mtype][i],"wb"),protocol=pickle.HIGHEST_PROTOCOL)
 
 
-def cmbalm2cl(f,w2,snmin,snmax,lmax,bn=50,spc='',mlist=['T','E','B']):
-    #//// compute aps ////#
-    # output is ell, TT, EE, BB, TE, TB, EB
+def cmbalm2cl(f,w2,snmin,snmax,lmax,verbose=True,bn=50,spc='',mlist=['T','E','B']):
+    #//// compute cls from alm ////#
+    # output order is ell, TT, EE, BB, TE, TB, EB
 
     L   = np.linspace(0,lmax,lmax+1)
     mb  = bins.multipole_binning(bn,spc=spc,lmax=lmax)
@@ -78,7 +71,7 @@ def cmbalm2cl(f,w2,snmin,snmax,lmax,bn=50,spc='',mlist=['T','E','B']):
 
     for i in range(snmin,snmax+1):
 
-        print('load alm', i, end=" ")
+        if varbose: print('load alm', i)
 
         #load cmb alms
         Ealm = pickle.load(open(f.alm['E'][i],"rb"))
@@ -105,16 +98,11 @@ def cmbalm2cl(f,w2,snmin,snmax,lmax,bn=50,spc='',mlist=['T','E','B']):
         np.savetxt(f.cli[i],np.concatenate((L[None,:],cls[i,:,:])).T)
 
     # save to files
-    if snmax>=1:
-        print('save sim')
+    if snmax>=1 and not os.path.exists(f.scl): 
+        if verbose: print('save sim')
         i0 = max(1,snmin)
         np.savetxt(f.scl,np.concatenate((L[None,:],np.mean(cls[i0:,:,:],axis=0),np.std(cls[i0:,:,:],axis=0))).T)
-        #np.savetxt(f.scb,np.concatenate((mb.bc[None,:],np.mean(cbs[i0:,:,:],axis=0),np.std(cbs[i0:,:,:],axis=0))).T)
 
-    #if snmin==0:
-    #    print('save real')
-    #    np.savetxt(f.ocl,np.concatenate((L[None,:],cls[0,:,:])).T)
-    #    np.savetxt(f.ocb,np.concatenate((mb.bc[None,:],cbs[0,:,:])).T)
 
 if __name__ == '__main__':
     import os
