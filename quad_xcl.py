@@ -20,8 +20,8 @@ r.w4 = np.sqrt(w1*w2)
 #//// bias terms ////#
 oc0 = prjlib.loadocl(f0.scl)
 oc1 = prjlib.loadocl(f1.scl)
-quad_func.quad.diagcinv(p0.quad,oc0)
-quad_func.quad.diagcinv(p1.quad,oc1)
+quad_func.quad.cinvfilter(p0.quad,oc0)
+quad_func.quad.cinvfilter(p1.quad,oc1)
 #quad_func.n0x(px.quad,p0.quad,p1.quad,f0.alm,f1.alm,r.w4,r.lcl)
 #quad_func.rdn0x(px.quad,p0.quad,p1.quad,0,1,f0.alm,f1.alm,r.w4,r.lcl)
 

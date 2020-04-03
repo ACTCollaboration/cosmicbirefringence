@@ -61,15 +61,15 @@ ps, fs, _ = prjlib.init(stype='lcmb',dodust='False')
 
 #//// Reconstruction ////#
 ow = False
-#ow = True
+ow = True
 snmax = p.snmax
 if p.stype not in ['lcmb','dust']: snmax = 100
 
 if p.stype in ['absrot','relrot','dust']:
     rdn0 = False
     ocl = prjlib.loadocl(fs.scl)
-    quad_func.quad.diagcinv(ps.quad,ocl)
-    quad_func.quad.diagcinv(p.quad,ocl)
+    quad_func.quad.cinvfilter(ps.quad,ocl)
+    quad_func.quad.cinvfilter(p.quad,ocl)
     quad_func.quad.qrec(ps.quad,p.snmin,snmax,f.alm,r.lcl,qout=p.quad,overwrite=ow)
     if p.stype=='dust':
         rdn0 = True
@@ -78,17 +78,19 @@ else:
     rdn0 = True
     ps = p
     ocl = prjlib.loadocl(f.scl)
-    quad_func.quad.diagcinv(p.quad,ocl)
+    quad_func.quad.cinvfilter(p.quad,ocl)
     quad_func.quad.al(p.quad,r.lcl,ocl)
     quad_func.quad.qrec(p.quad,p.snmin,snmax,f.alm,r.lcl,overwrite=ow)
     quad_func.quad.n0(p.quad,f.alm,r.w4,r.lcl,overwrite=ow)
     #quad_func.quad.qrec(p.quad,p.quad.mfmin,p.quad.mfmax,f.alm,r.lcl,overwrite=ow)
     #quad_func.quad.mean(p.quad,r.w4,overwrite=ow)
-    if p.PSA == 's14&15_deep56':
-        quad_func.quad.rdn0(p.quad,p.snmin,p.snmax,f.alm,r.w4,r.lcl,overwrite=ow)
+    #if p.PSA == 's14&15_deep56':
+    #quad_func.quad.rdn0(p.quad,p.snmin,p.snmax,f.alm,r.w4,r.lcl,overwrite=ow)
+    quad_func.quad.rdn0(p.quad,0,0,f.alm,r.w4,r.lcl,overwrite=ow)
 
 #//// Power spectrum ////#
-if p.PSA == 's14&15_deep56':
+#if p.PSA == 's14&15_deep56':
+if p.PSA == 's14&15_boss':
     ow = True
     for q in p.quad.qlist:
         qrec_aps(p.quad,q,p.snmin,p.snmax,f,r,ps.quad,p.stype,rdn0=rdn0,overwrite=ow)
