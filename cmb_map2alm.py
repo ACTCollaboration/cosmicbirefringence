@@ -71,7 +71,7 @@ def cmbalm2cl(f,w2,snmin,snmax,lmax,verbose=True,bn=50,spc='',mlist=['T','E','B'
 
     for i in range(snmin,snmax+1):
 
-        if varbose: print('load alm', i)
+        if verbose: print('load alm', i)
 
         #load cmb alms
         Ealm = pickle.load(open(f.alm['E'][i],"rb"))
