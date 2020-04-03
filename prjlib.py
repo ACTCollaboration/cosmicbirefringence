@@ -32,13 +32,13 @@ def set_config(pfile='',chvals='',PSA='',stype='',doreal='',dodust='',dearot='',
                 config.set(sec,cv,val)
 
     # additional quick replacing
-    if PSA !='':     config.set('DEFAULT','PSA',PSA)
-    if stype != '':  config.set('DEFAULT','stype',stype)
-    if doreal != '': config.set('DEFAULT','doreal',doreal)
-    if dodust != '': config.set('DEFAULT','dodust',dodust)
-    if dearot != '': config.set('DEFAULT','dearot',dearot)
-    if rlmin !='':   config.set('QUADREC','rlmin',rlmin)
-    if rlmax !='':   config.set('QUADREC','rlmax',rlmax)
+    if PSA !='':      config.set('DEFAULT','PSA',PSA)
+    if stype != '':   config.set('DEFAULT','stype',stype)
+    if doreal != '':  config.set('DEFAULT','doreal',doreal)
+    if dodust != '':  config.set('DEFAULT','dodust',dodust)
+    if dearot != '':  config.set('DEFAULT','dearot',dearot)
+    if rlmin !='':    config.set('QUADREC','rlmin',rlmin)
+    if rlmax !='':    config.set('QUADREC','rlmax',rlmax)
     if qtagext != '': config.set('QUADREC','qtagext',qtagext)
 
     return config
@@ -72,10 +72,6 @@ class params:
 
         self.ver   = conf.get('ver',ver)
 
-        # reconstruction
-        self.quad  = quad_func.quad(config['QUADREC'])
-
-
         #//// Error check ////#
         #dearot
         if self.dearot:
@@ -93,6 +89,30 @@ class params:
             self.mlist = ['E','B']
         else:
             self.mlist = ['T','E','B']
+
+        #doreal
+        if self.stype in ['dust']:
+            self.doreal = False
+
+        #noreal
+        if self.stype in ['absrot','relrot']:
+            self.doreal = False
+            self.snmin  = 1
+
+        # directory
+        self.Dir = '/global/homes/t/toshiyan/Work/Ongoing/ACT/data/curvedsky/'
+        
+        # tag
+        self.stag = self.stype+'_'+self.psa+'_ns'+str(self.nside)+'_lc'+str(self.lcut)+'_a'+str(self.ascale)+'deg'
+        self.ids = [str(i).zfill(5) for i in range(501)]
+        if self.doreal: self.ids[0] = 'real'
+        if self.dearot: self.ids[0] = self.ids[0] + '_dearot'
+ 
+        # alpha reconstruction filenames
+        #self.quad = quad_init(self.Dir,self.ids,self.stag,config['QUADREC'])
+        # For v0.2 or later version of cmblensplus, the following does not work and one should use the above line instead of the following two lines
+        self.quad  = quad_func.quad(config['QUADREC'])
+        quad_func.quad.fname(self.quad,self.Dir,self.ids,self.stag)
 
         #rlz num
         if '0p' in self.stype:
@@ -128,27 +148,6 @@ class params:
             self.quad.n0sim = 250
             self.quad.rdsim = 500
             self.quad.mfsim = 300
-
-        #doreal
-        if self.stype in ['dust']:
-            self.doreal = False
-
-        #noreal
-        if self.stype in ['absrot','relrot']:
-            self.doreal = False
-            self.snmin  = 1
-
-        # directory
-        self.Dir = '/global/homes/t/toshiyan/Work/Ongoing/ACT/data/curvedsky/'
-        
-        # tag
-        self.stag = self.stype+'_'+self.psa+'_ns'+str(self.nside)+'_lc'+str(self.lcut)+'_a'+str(self.ascale)+'deg'
-        self.ids = [str(i).zfill(5) for i in range(501)]
-        if self.doreal: self.ids[0] = 'real'
-        if self.dearot: self.ids[0] = self.ids[0] + '_dearot'
-        
-        # alpha reconstruction
-        quad_func.quad.fname(self.quad,self.Dir,self.ids,self.stag)
 
         # for v1 rec files
         if self.ver!='':
@@ -234,7 +233,6 @@ class filename:
             if params.doreal: 
                 self.imap[mtype][0] = d_act+'/preparedMap_'+mtype+'_'+params.PSA+'.fits'
 
-        
         # dust map
         self.dust = '/project/projectdirs/act/data/curvedsky/dust/thermaldust_353GHz.fits'
 
@@ -263,30 +261,34 @@ class recfunc:
         self.lcl = basic.aps.read_cambcls(filename.lcl,params.lmin,params.lmax,4,bb=True)/Tcmb**2
 
 
-
 #////////// Initial setup //////////#
-def params_init(pfile='',chvals='',PSA='',stype='',doreal='',dodust='',dearot='',rlmin='',rlmax='',qtagext='',ver=''):
-    config = set_config(pfile,chvals,PSA,stype,doreal,dodust,dearot,rlmin,rlmax,qtagext)
+def params_init(ver='',**kwargs):
+    config = set_config(**kwargs)
     p = params(config,ver)
     return p
 
 
-def filename_init(pfile='',chvals='',PSA='',stype='',doreal='',dodust='',dearot='',rlmin='',rlmax='',qtagext='',ver=''):
-    p = params_init(pfile,chvals,PSA,stype,doreal,dodust,dearot,rlmin,rlmax,qtagext,ver)
+def filename_init(**kwargs):
+    p = params_init(**kwargs)
     f = filename(p)
     return p, f
 
 
-def init(pfile='',chvals='',PSA='',stype='',doreal='',rlmin='',dodust='',dearot='',rlmax='',loadw=True,qtagext='',ver=''):
-    p, f = filename_init(pfile,chvals,PSA,stype,doreal,dodust,dearot,rlmin,rlmax,qtagext,ver)
+def init(loadw=True,**kwargs):
+    p, f = filename_init(**kwargs)
     r = recfunc(p,f)
     if loadw:
         r.w, r.w2, r.w4, tw = window(f)
     return p, f, r
 
 
-def window(filename):
+def quad_init(droot,ids,stag,config):
+    quad = quad_func.quad(config)
+    quad_func.quad.fname(quad,droot,ids,stag)
+    return quad
 
+
+def window(filename):
     wsf = hp.fitsfunc.read_map(filename.rmask)
     wap = hp.fitsfunc.read_map(filename.amask)
     totw = wsf*wap
@@ -355,7 +357,6 @@ def est_angles(patch,spec='EB',bn=50,spc='',lmin=200,lmax=2048,doreal='True',dea
         else:
             st = ana.est_absangle(ocb[3,:],scb[:,3,:],ocb[0,:]-ocb[1,:],scb[:,0,:]-scb[:,1,:],diag=diag,x2pte=False)
 
-    #print(disp+', obs:',np.around(-st.oA,decimals=3),'[deg]', 'std', np.around(st.sA,decimals=3), '[deg]')
     print(disp+', obs:',np.around(st.oA,decimals=3),'[deg]', 'std', np.around(st.sA,decimals=3), '[deg]','PTE', np.around(st.p,decimals=3))
 
 
